@@ -32,4 +32,3 @@ classif.lrn.imp = makeImputeWrapper(classif.lrn,
 
 rdesc = makeResampleDesc("CV", iters = 3, stratify=TRUE)
 result = resample(classif.lrn.imp, classif.task , rdesc, measures = list(auc),models = TRUE)
-result
