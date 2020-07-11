@@ -61,7 +61,8 @@ to_factor = c("branch_id",
               "Employment.Type",
               "State_ID", 
               "PERFORM_CNS.SCORE.DESCRIPTION",
-              "Employee_code_ID")
+              "Employee_code_ID",
+              "loan_default")
 
 df %<>% 
   mutate_at(to_factor, factor)
@@ -70,8 +71,9 @@ df %<>%
 
 df %<>%
   select(-c(UniqueID,supplier_id, branch_id, 
-            Current_pincode_ID, Employee_code_ID)
+            Current_pincode_ID, Employee_code_ID, MobileNo_Avl_Flag)
 )
+
 
 ###save file
 save(df, file="./Code/Data_prep/preproc_data.Rdata")
