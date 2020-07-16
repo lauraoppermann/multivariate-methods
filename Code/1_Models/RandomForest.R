@@ -1,37 +1,34 @@
 setwd("C:/Users/felix/Documents/GitHub/multivariate-methods")
-load("./Code/Data_prep/preproc_data.Rdata")
+load("./Code/Data_prep/preproc_data_FG.Rdata")
+
+
 library("mlr")
-library("LiblineaR")
 library("magrittr")
 library("dplyr")
+library("randomForestSRC")
+library("randomForest")
+
 #library("caret")
 
-#data preprocess specific to logit
-#add squared variables
-df %<>%
-  mutate(
-    disbursed_amount2 = disbursed_amount^2,
-    asset_cost2 = asset_cost^2,
-    ltv2 = ltv^2,
-    AVERAGE.ACCT.AGE2 = AVERAGE.ACCT.AGE^2,
-    CREDIT.HISTORY.LENGTH2 = CREDIT.HISTORY.LENGTH^2
-  )
+
 
 #change factor to dummy
-df = createDummyFeatures(
-  df,
-  target = "loan_default",
-  method = "1-of-n",
-  cols = NULL
-)
+#df = createDummyFeatures(
+#  df,
+#  target = "loan_default",
+#  method = "1-of-n",
+#  cols = NULL
+#)
 
 
 #specify cross validation with necessary steps:
 classif.task = makeClassifTask(id = "CreditScoring", 
                                data = df, 
-                               target = "loan_default")
+                               target = "Target_def" ,
+                               blocking = "Block") # specify train, validation
 
-classif.lrn = makeLearner("classif.LiblineaRL1LogReg", 
+classif.lrn = makeLearner("classif.randomForestSRC", 
+                          par.vals = list(ntree = 4, mtry = 6),
                           predict.type = "prob", 
                           fix.factors.prediction = TRUE)
 #standardize wrapper
@@ -47,13 +44,16 @@ classif.lrn = makeImputeWrapper(classif.lrn,
 
 
 #CV 
-rdesc = makeResampleDesc("CV", iters = 2, stratify=TRUE)
-resample(classif.lrn, classif.task , rdesc, measures = list(auc),models = TRUE)
+rdesc = makeResampleDesc("Holdout", blocking.cv = TRUE, iter = 2)
+results = resample(classif.lrn, classif.task , rdesc, measures = list(auc),models = TRUE)
 
 
 #
 mod = train(classif.lrn, task = classif.task )
-pred = predict(mod, task = classif.task)
+pred_test = predict(mod, makeClassifTask(data = test,  target = "Target_def"))
+pred_train = predict(mod, makeClassifTask(data = train,  target = "Target_def"))
+mlr::performance(pred_train, mlr::auc)
+mlr::performance(pred_test, mlr::auc)
 cal = generateCalibrationData(pred,breaks = c(0, seq(from= 0.5, to =1, by = 0.05)))
 
 plotCalibration(cal, rag=FALSE)
