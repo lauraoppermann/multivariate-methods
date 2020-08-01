@@ -49,20 +49,9 @@ classif.lrn = makeLearner("classif.xgboost",
 #train on entire train_val data
 mod = train(classif.lrn, task = classif.task )
 pred_test = predict(mod, makeClassifTask(data = df_test,  target = "Target_def"))
+save(mod, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/trained_model_xgboost.Rdata")
+save(pred_test, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/predictions_xgboost.Rdata")
 
-#compute performance on test and plot
-mlr::performance(pred_test, mlr::auc)
-df = generateThreshVsPerfData(pred_test, measures = list(fpr, tpr, mmce))
-plotROCCurves(df)
-
-#compute calibration
-cal = generateCalibrationData(pred_test,breaks = seq(from= 0.0, to =1, by = 0.05))
-plotCalibration(cal, rag=FALSE)
-
-
-##try this for calibration plot
-library("classifierplots")
-classifierplots::calibration_plot(pred_test$data$truth, pred_test$data$prob.1)
 
 
 
@@ -70,63 +59,42 @@ classifierplots::calibration_plot(pred_test$data$truth, pred_test$data$prob.1)
 #### COMPUTING AVG BENFITS  with optimal threshold strategy #################
 #############################################################################
 #function to compute avg costs for optimal probability choice for different costs
+#df: data frame with fitting data
 #preds: mlr prediction object 
 #costs: costs of default (benefits of acquiring a "good" customer is normalized to 1)
-comp_benef = function(costs,preds){ 
-  th = 1/(1+ costs)
-  cost_benefit_matrix = matrix(c(0,-costs,0, +1), nrow=2,ncol = 2,  byrow=TRUE)
-  rownames(cost_benefit_matrix) = c("1","0")
-  colnames(cost_benefit_matrix) = c("1","0")
-  preds = mlr::setThreshold(preds, th)
-  credit.benef = mlr::makeCostMeasure(id = "credit.benef", name = "Credit Benefits", costs = cost_benefit_matrix)
-  return(mlr::performance(preds, measures = credit.benef))
-}
 
-#function to compute avg costs if bank does not give loans
-#preds: mlr prediction object 
-#costs: cost of default (other costs therefore normalized to 1)
 
-comp_benef_th_0 = function(costs,preds){ 
-  th = 0
-  cost_benefit_matrix = matrix(c(0,-costs,0, 1), nrow=2,ncol = 2,  byrow=TRUE)
-  rownames(cost_benefit_matrix) = c("1","0")
-  colnames(cost_benefit_matrix) = c("1","0")
-  preds = mlr::setThreshold(preds, th)
-  credit.benef = mlr::makeCostMeasure(id = "credit.benef", name = "Credit Benefits", costs = cost_benefit_matrix)
-  return(mlr::performance(preds, measures = credit.benef))
-}
 
-#function to compute avg costs if bank does not give any loan
-#preds: mlr prediction object 
-#costs: cost of default (other costs therefore normalized to 1)
-
-comp_benef_th_1 = function(costs,preds){ 
+#Compute costs
+#function to compute costs when lending to every one
+comp_weight_benefit_th1 = function(df,pred,  costs){
   th = 1
-  cost_benefit_matrix = matrix(c(0,-costs,0, 1), nrow=2,ncol = 2,  byrow=TRUE)
-  rownames(cost_benefit_matrix ) = c("1","0")
-  colnames(cost_benefit_matrix ) = c("1","0")
-  preds = mlr::setThreshold(preds, th)
-  credit.benef = mlr::makeCostMeasure(id = "credit.benef", name = "Credit Benefits", costs = cost_benefit_matrix)
-  return(mlr::performance(preds, measures = credit.benef))
-}
+  c_r = 1/costs
+  pred = mlr::setThreshold(pred, th)
+  cost_mat = cbind((as.numeric(df$Target_def)-1==0)*c_r*df$Q_this_loan -(as.numeric(df$Target_def)-1==1)*(df$Q_this_loan))
+  costs = sum(cost_mat*((pred$data$truth== 1 & pred$data$response== 0) + (pred$data$truth== 0 & pred$data$response== 0)))
+  return(costs / nrow(df))}
 
-#compute benefits for varying costs of default
+
+#function to compute costs when lending according to optimal decision threshold
+comp_weight_benefit = function(df,pred,  costs){
+  th =  1/(1+ costs)
+  c_r = 1/costs
+  pred = mlr::setThreshold(pred, th)
+  cost_mat = cbind((as.numeric(df$Target_def)-1==0)*c_r*df$Q_this_loan -(as.numeric(df$Target_def)-1==1)*(df$Q_this_loan))
+  costs = sum(cost_mat*((pred$data$truth== 1 & pred$data$response== 0) + (pred$data$truth== 0 & pred$data$response== 0)))
+  return(costs / nrow(df))}
+
 costs_l = as.list(1:20)
-benef_xgboost = sapply(costs_l, function(x) comp_benef(costs = x, pred_test))
-#sapply(costs_l, function(x) comp_benef_th_0(costs = x, pred_test))
-benef_naive = sapply(costs_l, function(x) comp_benef_th_1(costs= x, pred_test))
-
+benef_xgboost = sapply(costs_l, function(x) comp_weight_benefit( df_test, pred_test,costs = x))
+benef_naive =   sapply(costs_l, function(x) comp_weight_benefit_th1( df_test, pred_test,costs = x))
+names(benef_xgboost) = 1:20
+names(benef_naive) = 1:20
 save(benef_xgboost, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/benef_xgboost.Rdata")
 save(benef_naive, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/benef_naive.Rdata")
 
-###Example of maximization on test
-cost_benefit_matrix = matrix(c(0,-6,0, 1), nrow=2,ncol = 2,  byrow=TRUE)
-rownames(cost_benefit_matrix) = c("1","0")
-colnames(cost_benefit_matrix) = c("1","0")
-credit.benef = mlr::makeCostMeasure(id = "credit.benef", name = "Credit Benefits", costs = cost_benefit_matrix, minimize = FALSE)
-
-d = generateThreshVsPerfData(pred_test, measures = list(credit.benef))
-plotThreshVsPerf(d, mark.th = 1/7)
+#compute number of loans awarded: 
+n_loans_xgboost = lapply(1:20, function(x) sum(pred_test$data$prob.1 < (1/(1+x))))
+save(n_loans_xgboost, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/n_loans_xgboost.Rdata")
 
 
-parallelStop()

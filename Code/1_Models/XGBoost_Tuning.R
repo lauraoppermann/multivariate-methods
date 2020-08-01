@@ -1,3 +1,7 @@
+############IMPORTANT##################
+# CAN TAKE SEVERAL HOURS TO COMPUTE
+#########################################
+
 setwd("H:/multivariate-methods/Code")
 load("./Data_prep/train_val_data.Rdata")
 
@@ -38,7 +42,7 @@ ps = makeParamSet(makeDiscreteParam("eta", values = c(0.01,0.025, 0.05)),
   makeDiscreteParam("nrounds", values = c(1000, 1500, 2000)),
   makeDiscreteParam("lambda", values = c(1, 1.5, 2)),
   makeDiscreteParam("subsample", values = c(0.6, 0.8, 1)),
-  makeDiscreteParam("colsample_bytree", values = c(0.6, 0.8, 0.9)))
+  makeDiscreteParam("colsample_bytree", values = c(0.6, 0.8, 1)))
 
 
 #optimization algo fo tuning --> simple grid tuning (taking all possible combinations of parameters)

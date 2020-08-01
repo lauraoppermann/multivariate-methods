@@ -92,7 +92,7 @@ df_test %<>% dplyr::mutate(Q_this_loan_X_Q_loan_to_value = Q_this_loan * Q_loan_
 
 #change factor to dummy
 df_test = createDummyFeatures(
-  df_train_val,
+  df_test,
   target = "Target_def",
   method = "1-of-n",
   cols = NULL
@@ -125,40 +125,38 @@ classif.lrn = makeImputeWrapper(classif.lrn,
 #train on entire train_val data
 mod = train(classif.lrn, task = classif.task )
 pred_test = predict(mod, makeClassifTask(data = df_test,  target = "Target_def"))
+save(mod, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/trained_model_logit.Rdata")
+save(pred_test, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/predictions_logit.Rdata")
 
-#compute performance on test and plot
-mlr::performance(pred_test, mlr::auc)
-df = generateThreshVsPerfData(pred_test, measures = list(fpr, tpr, mmce))
-plotROCCurves(df)
-
-#compute calibration
-cal = generateCalibrationData(pred_test,breaks = seq(from= 0.0, to =1, by = 0.05))
-plotCalibration(cal, rag=FALSE)
 
 
 
 #############################################################################
 #### COMPUTING AVG BENFITS  with optimal threshold strategy #################
 #############################################################################
-#function to compute avg costs for optimal probability choice for different costs
-#preds: mlr prediction object 
-#costs: costs of default (benefits of acquiring a "good" customer is normalized to 1)
-comp_benef = function(costs,preds){ 
+# we create functions that compute the average benefits of the decision strategy
+# the variable cost represents the cost ratio (FALSE NEGATIVE to TRUE POSITIVE)
+# --> 2 means it is two times more costly to lend to a band applciant than not to lend to a good one
+# The costs are then calculated by taking the overall credit as the loss when giving a loan to a bad payer. 
+# The opportunity costs of not giving to a good lender are given as: (1/cost)* loan amount
+# We then calculate the average benefit (average over all credit applicatns)
+
+######### varying weigths #####
+comp_weight_benefit = function(df,pred,  costs){
   th = 1/(1+ costs)
-  cost_benefit_matrix = matrix(c(0,-costs,0, +1), nrow=2,ncol = 2,  byrow=TRUE)
-  rownames(cost_benefit_matrix) = c("1","0")
-  colnames(cost_benefit_matrix) = c("1","0")
-  preds = mlr::setThreshold(preds, th)
-  credit.benef = mlr::makeCostMeasure(id = "credit.benef", name = "Credit Benefits", costs = cost_benefit_matrix)
-  return(mlr::performance(preds, measures = credit.benef))
-}
+  c_r = 1/costs
+  pred = mlr::setThreshold(pred, th)
+  cost_mat = cbind((as.numeric(df$Target_def)-1==0)*c_r*df$Q_this_loan -(as.numeric(df$Target_def)-1==1)*(df$Q_this_loan))
+  costs = sum(cost_mat*((pred$data$truth== 1 & pred$data$response== 0) + (pred$data$truth== 0 & pred$data$response== 0)))
+  return(costs / nrow(df))}
 
-#compute benefits for varying costs of default
 costs_l = as.list(1:20)
-benef_logit = sapply(costs_l, function(x) comp_benef(costs = x, pred_test))
+benef_logit = sapply(costs_l, function(x) comp_weight_benefit( df_test, pred_test,costs = x))
 names(benef_logit) = 1:20
-
 
 save(benef_logit, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/benef_logit.Rdata")
 
+#compute number of loans awarded:
+n_loans_logit = lapply(1:20, function(x) sum(pred_test$data$prob.1 < (1/(1+x))))
+save(n_loans_logit, file = "C:/Users/felix/Documents/GitHub/multivariate-methods/Code/1_Models/n_loans_logit.Rdata")
 
